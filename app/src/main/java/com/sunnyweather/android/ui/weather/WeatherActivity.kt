@@ -1,9 +1,14 @@
 package com.sunnyweather.android.ui.weather
 
+
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.inputmethod.InputMethodManager
@@ -15,21 +20,28 @@ import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
+import com.amap.api.location.AMapLocationClient
+import com.amap.api.location.AMapLocationClientOption
+import com.amap.api.location.AMapLocationListener
 import com.sunnyweather.android.R
+import com.sunnyweather.android.logic.model.RealtimeResponse
 import com.sunnyweather.android.logic.model.Weather
 import com.sunnyweather.android.logic.model.getSky
 import kotlinx.android.synthetic.main.activity_weather.*
 import kotlinx.android.synthetic.main.forecast.*
+import kotlinx.android.synthetic.main.forecast_item.*
 import kotlinx.android.synthetic.main.life_index.*
 import kotlinx.android.synthetic.main.now.*
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
 class WeatherActivity : AppCompatActivity() {
 
     val viewModel by lazy { ViewModelProviders.of(this).get(WeatherViewModel::class.java) }
+//    val viewModel1 by lazy { ViewModelProviders.of(this).get() }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(savedInstanceState: Bundle? ) {
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= 21) {
             val decorView = window.decorView
@@ -63,6 +75,13 @@ class WeatherActivity : AppCompatActivity() {
         }
         navBtn.setOnClickListener {
             drawerLayout.openDrawer(GravityCompat.START)
+        }
+        location.setOnClickListener {
+            initMap()
+            Log.d("WeatherActivity","点击定位")
+//            refreshWeather()
+
+
         }
         drawerLayout.addDrawerListener(object : DrawerLayout.DrawerListener {
             override fun onDrawerStateChanged(newState: Int) {}
@@ -114,6 +133,18 @@ class WeatherActivity : AppCompatActivity() {
             temperatureInfo.text = tempText
             forecastLayout.addView(view)
         }
+        fenxiang.setOnClickListener {
+            var shareIntent = Intent()
+            shareIntent.action = Intent.ACTION_SEND
+            shareIntent.type = "text/plain"
+            shareIntent.putExtra("android.intent.extra.SUBJECT", "分享")
+            shareIntent.putExtra(Intent.EXTRA_TEXT, "${viewModel.placeName}的温度 ："+"${realtime.temperature.toInt()} ℃" )
+
+//            " $dateInfo"+ " $skyIcon" + " $skyInfo" + " $temperatureInfo"
+            shareIntent = Intent.createChooser(shareIntent, "分享")
+            startActivity(shareIntent)
+        }
+
         // 填充life_index.xml布局中的数据
         val lifeIndex = daily.lifeIndex
         coldRiskText.text = lifeIndex.coldRisk[0].desc
@@ -122,5 +153,93 @@ class WeatherActivity : AppCompatActivity() {
         carWashingText.text = lifeIndex.carWashing[0].desc
         weatherLayout.visibility = View.VISIBLE
     }
+    var mLocationClient: AMapLocationClient? = null
+    //声明定位回调监听器
+    var mLocationOption: AMapLocationClientOption? = null
+    private fun initMap() {
 
+        //初始化定位
+        mLocationClient = AMapLocationClient(this)
+        //设置定位回调监听
+        mLocationClient!!.setLocationListener(mLocationListener)
+        mLocationOption = AMapLocationClientOption()
+        //设置定位模式为高精度模式，AMapLocationMode.Battery_Saving为低功耗模式，AMapLocationMode.Device_Sensors是仅设备模式
+        mLocationOption!!.locationMode = AMapLocationClientOption.AMapLocationMode.Hight_Accuracy
+        mLocationOption!!.isNeedAddress = true //设置是否返回地址信息（默认返回地址信息）
+        mLocationOption!!.isOnceLocation = false //设置是否只定位一次,默认为false
+        mLocationOption!!.isWifiActiveScan = true //设置是否强制刷新WIFI，默认为强制刷新
+        mLocationOption!!.isMockEnable = false //设置是否允许模拟位置,默认为false，不允许模拟位置
+        mLocationOption!!.interval = 15000 //设置定位间隔,单位毫秒,默认为2000ms
+        mLocationOption!!.isOnceLocation = false //可选，是否设置单次定位默认为false即持续定位
+        mLocationOption!!.isOnceLocationLatest =
+                false //可选，设置是否等待wifi刷新，默认为false.如果设置为true,会自动变为单次定位，持续定位时不要使用
+        mLocationOption!!.isWifiScan =
+                true //可选，设置是否开启wifi扫描。默认为true，如果设置为false会同时停止主动刷新，停止以后完全依赖于系统刷新，定位位置可能存在误差
+        mLocationOption!!.isLocationCacheEnable = true //可选，设置是否使用缓存定位，默认为true
+        //给定位客户端对象设置定位参数
+        mLocationClient!!.setLocationOption(mLocationOption)
+        //启动定位
+        mLocationClient!!.startLocation()
+
+    }
+         private var mLocationListener =
+                AMapLocationListener { aMapLocation ->
+                    if (aMapLocation != null) {
+                        Log.d("WeatherActivity","viewModel1.locationLng")
+                        if (aMapLocation.errorCode == 0) {
+                            Log.d("WeatherActivity","viewModel1.locationLng")
+                            //定位成功回调信息，设置相关消息
+                            aMapLocation.locationType //获取当前定位结果来源，如网络定位结果，详见定位类型表
+                            // aMapLocation.getLatitude();//获取纬度
+                            // aMapLocation.getLongitude();//获取经度
+                            aMapLocation.accuracy //获取精度信息
+                            //val df = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+
+                                viewModel.locationLng = aMapLocation.longitude.toString()
+                                Log.d("WeatherActivity",viewModel.locationLng)
+                                viewModel.locationLat = aMapLocation.latitude.toString()
+                                Log.d("WeatherActivity",viewModel.locationLat)
+
+                            //  aMapLocation.getAddress();//地址，如果option中设置isNeedAddress为false，则没有此结果，网络定位结果中会有地址信息，GPS定位不返回地址信息。
+                            //  aMapLocation.getCountry();//国家信息
+                            //  aMapLocation.getProvince();//省信息
+                            //  aMapLocation.getCity();//城市信息
+                            //   aMapLocation.getDistrict();//城区信息
+                            //    aMapLocation.getStreet();//街道信息
+                            //     aMapLocation.getStreetNum();//街道门牌号信息
+                            //    aMapLocation.getCityCode();//城市编码
+                            //     aMapLocation.getAdCode();//地区编码
+                            println("所在城市：" + aMapLocation.country + aMapLocation.province + aMapLocation.city)
+                            viewModel.placeName = aMapLocation.city + aMapLocation.district + aMapLocation.street
+                            placeName.text = viewModel.placeName
+                            viewModel.refreshWeather(aMapLocation.longitude.toString(),aMapLocation.latitude.toString())
+                            mLocationClient!!.stopLocation() //停止定位
+                            Log.d("WeatherActivity",aMapLocation.province)
+                        } else {
+
+                            //显示错误信息ErrCode是错误码，errInfo是错误信息，详见错误码表。
+                            Log.e(
+                                    "info", "location Error, ErrCode:"
+                                    + aMapLocation.errorCode + ", errInfo:"
+                                    + aMapLocation.errorInfo
+                            )
+                        }
+                    }
+                }
+
+
+
+
+
+//    private fun refreshWeather1() {
+//        viewModel1.refreshWeather(viewModel1.locationLng, viewModel1.locationLat)
+//        swipeRefresh.isRefreshing = true
+//    }
+    override fun onDestroy() {
+        super.onDestroy()
+        //销毁
+        if (mLocationClient != null) {
+            mLocationClient!!.onDestroy()
+        }
+    }
 }
